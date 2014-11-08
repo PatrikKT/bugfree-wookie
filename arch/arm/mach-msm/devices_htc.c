@@ -694,6 +694,19 @@ unsigned int get_tamper_sf(void)
 }
 EXPORT_SYMBOL(get_tamper_sf);
 
+static int atsdebug = 0;
+int __init check_atsdebug(char *s)
+{
+	atsdebug = simple_strtoul(s, 0, 10);
+	return 1;
+}
+__setup("ro.atsdebug=", check_atsdebug);
+
+unsigned int get_atsdebug(void)
+{
+	return atsdebug;
+}
+
 static int ls_setting = 0;
 #define FAKE_ID 2
 #define REAL_ID 1
@@ -728,8 +741,35 @@ int __init board_wifi_setting(char *s)
 }
 __setup("wificd=", board_wifi_setting);
 
+char model_id[32];
+char *board_get_mid(void)
+{
+	return model_id;
+}
+static int __init board_set_mid(char *mid)
+{
+	strncpy(model_id, mid, sizeof(model_id));
+	return 1;
+}
+__setup("androidboot.mid=", board_set_mid);
+
 int get_wifi_setting(void)
 {
 	return wifi_setting;
 }
 EXPORT_SYMBOL(get_wifi_setting);
+
+static char android_cid[16] = {0};
+static int __init board_cid_check(char *cid)
+{
+	pr_info("%s: set cid no to %s\r\n", __func__, cid);
+	strncpy(android_cid, cid, sizeof(android_cid)/sizeof(android_cid[0]) - 1);
+	return 1;
+}
+__setup("androidboot.cid=", board_cid_check);
+
+char *board_cid(void)
+{
+	return android_cid;
+}
+EXPORT_SYMBOL(board_cid);

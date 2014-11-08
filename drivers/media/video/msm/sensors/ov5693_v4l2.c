@@ -1132,7 +1132,7 @@ int32_t ov5693_power_up(struct msm_sensor_ctrl_t *s_ctrl)
 	}
 
 	if (!sdata->use_rawchip) {
-		rc = msm_camio_clk_enable(CAMIO_CAM_MCLK_CLK);
+		rc = msm_camio_clk_enable(sdata,CAMIO_CAM_MCLK_CLK);
 		if (rc < 0) {
 			pr_err(" %s: msm_camio_sensor_clk_on failed:%d\n",
 			 __func__, rc);
@@ -1163,7 +1163,7 @@ enable_sensor_power_up_failed:
 	else
 		sdata->camera_power_off();
 enable_power_on_failed:
-	msm_camio_clk_disable(CAMIO_CAM_MCLK_CLK);
+	msm_camio_clk_disable(sdata,CAMIO_CAM_MCLK_CLK);
 enable_mclk_failed:
 	return rc;
 }
@@ -1195,7 +1195,7 @@ int32_t ov5693_power_down(struct msm_sensor_ctrl_t *s_ctrl)
 		pr_err("%s msm_sensor_power_down failed\n", __func__);
 
 	if (!sdata->use_rawchip) {
-		msm_camio_clk_disable(CAMIO_CAM_MCLK_CLK);
+		msm_camio_clk_disable(sdata,CAMIO_CAM_MCLK_CLK);
 		if (rc < 0)
 			pr_err(" %s: msm_camio_clk_disable failed:%d\n",
 				 __func__, rc);

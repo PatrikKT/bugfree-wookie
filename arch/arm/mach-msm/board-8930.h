@@ -80,9 +80,6 @@ extern struct gpio_regulator_platform_data
 	msm8930_gpio_regulator_pdata[] __devinitdata;
 
 extern struct rpm_regulator_platform_data
-	msm8930_DVT1_2_device_rpm_regulator_pdata __devinitdata;
-
-extern struct rpm_regulator_platform_data
 	msm8930_rpm_regulator_pdata __devinitdata;
 
 #if defined(CONFIG_GPIO_SX150X) || defined(CONFIG_GPIO_SX150X_MODULE)

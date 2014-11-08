@@ -18,9 +18,10 @@
 #include <linux/platform_device.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <linux/delay.h>
 #include <linux/err.h>
+#include <linux/debugfs.h>
 #include <linux/mfd/pm8xxx/gpio.h>
+#include <linux/uaccess.h>
 
 #define NCP6924_FMT(fmt) "[NCP6924] " fmt
 #define NCP6924_ERR_FMT(fmt) "[NCP6924] err:" fmt
@@ -34,6 +35,8 @@ static int ncp6924_probe(struct i2c_client *client, const struct i2c_device_id *
 static struct i2c_client *this_client;
 static struct mutex ncp6924_mutex;
 static int en_gpio = 0;
+
+static struct dentry *debugfs;
 
 struct pm_gpio ncp6924_gpio_en = {
 	.direction      = PM_GPIO_DIR_OUT,
@@ -273,6 +276,93 @@ int ncp6924_enable_ldo(u8 id, bool onoff)
 }
 EXPORT_SYMBOL(ncp6924_enable_ldo);
 
+#ifdef CONFIG_DEBUG_FS
+
+#define MAX_DEBUG_BUF_LEN 50
+static char debug_buf[MAX_DEBUG_BUF_LEN];
+
+static int ncp6924_enable_open(struct inode *inode, struct file *filp)
+{
+	if (IS_ERR(filp) || filp == NULL) {
+		NCP6924_ERR("[DEBUGFS] Enable Register Open Error %ld\n", PTR_ERR(filp));
+		return -ENOMEM;
+	}
+
+	filp->private_data = inode->i_private;
+	return 0;
+}
+
+static ssize_t ncp6924_enable_read(struct file *filp, char __user *buffer,
+		size_t count, loff_t *ppos)
+{
+	u8 en_reg;
+	int output, rc;
+	if (IS_ERR(filp) || filp == NULL) {
+		NCP6924_ERR("[DEBUGFS] Enable Register Read Error %ld\n", PTR_ERR(filp));
+		return -ENOMEM;
+	}
+
+	en_reg = ncp6924_read_reg(NCP6924_ENABLE);
+
+	output = snprintf(debug_buf, MAX_DEBUG_BUF_LEN-1, "0x%x (gpio:%d)\n", en_reg, ncp6924_gpio_en.output_value);
+	rc = simple_read_from_buffer((void __user *) buffer, output, ppos,
+					(void *) debug_buf, output);
+	return rc;
+}
+
+static ssize_t ncp6924_enable_write(struct file *filp, const char __user *buffer,
+		size_t count, loff_t *ppos)
+{
+	unsigned int val = 0;
+	int rc = 0;
+	if (IS_ERR(filp) || filp == NULL) {
+		NCP6924_ERR("[DEBUGFS] Enable Register Write Error %ld\n", PTR_ERR(filp));
+		return -ENOMEM;
+	}
+
+	if (count < MAX_DEBUG_BUF_LEN) {
+		if (copy_from_user(debug_buf, (void __user *) buffer, count))
+			return -EFAULT;
+
+		debug_buf[count] = '\0';
+		rc = sscanf(debug_buf, "0x%x", &val);
+		if (rc == 1) {
+			ncp6924_config_enable((u8)val);
+			NCP6924_INFO("[DEBUGFS] Set ENABLE to 0x%x (read: 0x%x)\n", val, ncp6924_read_reg(NCP6924_ENABLE));
+		} else
+			NCP6924_INFO("[DEBUGFS] Usage: echo 0xNN > reg_enable\n");
+	}
+
+	return count;
+}
+
+struct file_operations ncp6924_enable_fops = {
+	.owner  = THIS_MODULE,
+	.open   = ncp6924_enable_open,
+	.write  = ncp6924_enable_write,
+	.read   = ncp6924_enable_read,
+};
+
+static int ncp6924_init_debugfs(void)
+{
+	struct dentry *en_reg;
+	debugfs = debugfs_create_dir("ncp6924", NULL);
+	if (!debugfs)
+		return -ENOENT;
+
+	en_reg = debugfs_create_file("reg_enable", 0644, debugfs, NULL, &ncp6924_enable_fops);
+	if (!en_reg)
+		goto Fail;
+
+	return 0;
+
+Fail:
+	debugfs_remove_recursive(debugfs);
+	debugfs = NULL;
+	return -ENOENT;
+}
+#endif
+
 static int ncp6924_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	struct ncp6924_platform_data *pdata;
@@ -304,12 +394,18 @@ static int ncp6924_probe(struct i2c_client *client, const struct i2c_device_id *
 	ncp6924_dump_regs();
 	
 
+#ifdef CONFIG_DEBUG_FS
+	ncp6924_init_debugfs();
+#endif
+
 	return err;
 }
 
 static int ncp6924_remove(struct i2c_client *client)
 {
 	mutex_destroy(&ncp6924_mutex);
+	if (debugfs)
+		debugfs_remove_recursive(debugfs);
 	NCP6924_INFO("%s:\n", __func__);
 	return 0;
 }

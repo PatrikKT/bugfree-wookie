@@ -931,8 +931,10 @@ static int fe_path_get(struct snd_soc_pcm_runtime *fe,
 
 	list = kzalloc(sizeof(struct snd_soc_dapm_widget_list) +
 			sizeof(struct snd_soc_dapm_widget *), GFP_KERNEL);
-	if (list == NULL)
+	if (list == NULL){
+		dev_err(fe->dev, "%s: audio %s paths memory allocate failed \n", __func__, stream ? "capture" : "playback");
 		return -ENOMEM;
+	}
 
 	
 	paths = snd_soc_dapm_dai_get_connected_widgets(cpu_dai, stream, &list);
@@ -1580,8 +1582,10 @@ int soc_dpcm_fe_dai_trigger(struct snd_pcm_substream *substream, int cmd)
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
-	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		fe->dpcm[stream].state = SND_SOC_DPCM_STATE_STOP;
+		break;
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		fe->dpcm[stream].state = SND_SOC_DPCM_STATE_PAUSED;
 		break;
 	}
 
@@ -1693,8 +1697,13 @@ static int soc_dpcm_be_dai_hw_free(struct snd_soc_pcm_runtime *fe, int stream)
 		if ((be->dpcm[stream].state != SND_SOC_DPCM_STATE_HW_PARAMS) &&
 		    (be->dpcm[stream].state != SND_SOC_DPCM_STATE_PREPARE) &&
 			(be->dpcm[stream].state != SND_SOC_DPCM_STATE_HW_FREE) &&
-			(be->dpcm[stream].state != SND_SOC_DPCM_STATE_PAUSED) &&
-		    (be->dpcm[stream].state != SND_SOC_DPCM_STATE_STOP))
+		    (be->dpcm[stream].state != SND_SOC_DPCM_STATE_PAUSED) &&
+		    (be->dpcm[stream].state != SND_SOC_DPCM_STATE_STOP) &&
+		    !((be->dpcm[stream].state == SND_SOC_DPCM_STATE_START) &&
+		      ((fe->dpcm[stream].state != SND_SOC_DPCM_STATE_START) &&
+			(fe->dpcm[stream].state != SND_SOC_DPCM_STATE_PAUSED) &&
+			(fe->dpcm[stream].state !=
+						SND_SOC_DPCM_STATE_SUSPEND))))
 			continue;
 
 		dev_dbg(be->dev, "dpcm: hw_free BE %s\n",

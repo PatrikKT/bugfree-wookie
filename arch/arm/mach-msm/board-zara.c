@@ -271,7 +271,6 @@ static struct platform_device msm8930_android_pmem_adsp_device = {
 	.id = 2,
 	.dev = { .platform_data = &android_pmem_adsp_pdata },
 };
-#endif
 
 static struct android_pmem_platform_data android_pmem_audio_pdata = {
 	.name = "pmem_audio",
@@ -285,7 +284,8 @@ static struct platform_device msm8930_android_pmem_audio_device = {
 	.id = 4,
 	.dev = { .platform_data = &android_pmem_audio_pdata },
 };
-#endif
+#endif 
+#endif 
 
 struct fmem_platform_data msm8930_fmem_pdata = {
 };
@@ -334,15 +334,19 @@ static void __init size_pmem_devices(void)
 #ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 	android_pmem_adsp_pdata.size = pmem_adsp_size;
 	android_pmem_pdata.size = pmem_size;
-#endif
 	android_pmem_audio_pdata.size = MSM_PMEM_AUDIO_SIZE;
-#endif
+#endif 
+#endif 
 }
 
+#ifdef CONFIG_ANDROID_PMEM
+#ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 static void __init reserve_memory_for(struct android_pmem_platform_data *p)
 {
 	msm8930_reserve_table[p->memory_type].size += p->size;
 }
+#endif 
+#endif 
 
 static void __init reserve_pmem_memory(void)
 {
@@ -350,10 +354,10 @@ static void __init reserve_pmem_memory(void)
 #ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 	reserve_memory_for(&android_pmem_adsp_pdata);
 	reserve_memory_for(&android_pmem_pdata);
-#endif
 	reserve_memory_for(&android_pmem_audio_pdata);
+#endif 
 	msm8930_reserve_table[MEMTYPE_EBI1].size += pmem_kernel_ebi1_size;
-#endif
+#endif 
 }
 
 static int msm8930_paddr_to_memtype(unsigned int paddr)
@@ -747,6 +751,7 @@ static struct htc_battery_platform_data htc_battery_pdev_data = {
 	.overload_vol_thr_mv = 4000,
 	.overload_curr_thr_ma = 0,
 	.smooth_chg_full_delay_min = 1,
+	.shutdown_voltage_critiria_setting = 3400,
 	
 	.icharger.name = "pm8921",
 	.icharger.get_charging_source = pm8921_get_charging_source,
@@ -1865,7 +1870,7 @@ static struct msm_otg_platform_data msm_otg_pdata;
 extern unsigned int system_rev;
 static int msm_hsusb_vbus_power(bool on)
 {
-	if (system_rev >= XB) {
+	if(system_rev >= XB) {
 		static int prev_on;
 		int rc;
 
@@ -1930,14 +1935,14 @@ static struct msm_bus_scale_pdata usb_bus_scale_pdata = {
 #endif
 
 static int zara_phy_init_seq[] = {
-	0x3f, 0x81,
-	0x3f, 0x82,
+	0x3C, 0x81,
+	0x24, 0x82,
 	-1
 };
 
 static int zara_phy_init_seq_no_uart[] = {
-	0x3f, 0x81,
-	0x3f, 0x82,
+	0x3b, 0x81,
+	0x24, 0x82,
 	-1
 };
 
@@ -2021,7 +2026,7 @@ static struct android_usb_platform_data android_usb_pdata = {
 	.usb_id_pin_gpio	= MSM_USB_ID1,
 	.usb_rmnet_interface = "smd:bam",
 	.usb_diag_interface = "diag",
-	.fserial_init_string = "smd:modem,tty,tty:autobot,tty:serial,tty:autobot",
+	.fserial_init_string = "smd:modem,tty,tty:autobot,tty:serial,tty:autobot,tty:acm",
 	.nluns = 1,
 };
 
@@ -3205,6 +3210,7 @@ static void syn_init_vkeys_zara(void)
 
 	return;
 }
+
 static struct htc_headset_gpio_platform_data htc_headset_gpio_data = {
 	.hpin_gpio		= MSM_EARPHONE_DETz,
 	.key_enable_gpio	= 0,
@@ -3420,7 +3426,7 @@ static struct platform_device htc_headset_mgr = {
 
 static void headset_device_register(void)
 {
-	pr_info("[HS_BOARD] (%s) hw rev=%d\n", __func__, system_rev);
+	pr_info("[HS_BOARD] (%s) hw_rev %d\n", __func__, system_rev);
 	platform_device_register(&htc_headset_mgr);
 }
 
@@ -3494,10 +3500,10 @@ static struct platform_device msm_tsens_device = {
 
 static struct msm_thermal_data msm_thermal_pdata = {
 	.sensor_id = 9,
-	.poll_ms = 250,
-	.limit_temp_degC = 60,
-	.temp_hysteresis_degC = 10,
-	.freq_step = 2,
+	.poll_ms = 1000,
+	.limit_temp = 60,
+	.temp_hysteresis = 10,
+	.limit_freq = 918000,
 };
 
 #ifdef CONFIG_MSM_FAKE_BATTERY
@@ -3638,9 +3644,9 @@ static struct platform_device *common_devices[] __initdata = {
 #ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 	&msm8930_android_pmem_device,
 	&msm8930_android_pmem_adsp_device,
-#endif
 	&msm8930_android_pmem_audio_device,
-#endif
+#endif 
+#endif 
 	&msm8930_fmem_device,
 	&msm_device_bam_dmux,
 	&msm_fm_platform_init,

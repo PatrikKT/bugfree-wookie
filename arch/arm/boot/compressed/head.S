@@ -112,71 +112,6 @@
 #endif
 		.endm
 
-
-#define	UNCOMPRESS_FOOTPRINT_BASE	0x8F9F8000
-#define	UNCOMPRESS_REGISTERS_BASE	(UNCOMPRESS_FOOTPRINT_BASE + 0x10)
-
-		.macro	write_uncompress_footprint,val
-		stmfd   sp!, {r5, r6}
-		ldr r5, =UNCOMPRESS_FOOTPRINT_BASE
-		ldr r6, =\val
-		str     r6, [r5]
-		ldmfd   sp!, {r5, r6}
-		.endm
-
-		.macro	store_regs_before_jumping_kernel
-		stmfd   sp!, {r5, r6}
-		ldr	r5, =UNCOMPRESS_REGISTERS_BASE	@ store r0
-		mov	r6, r0
-		str	r6, [r5]
-		add	r5, #4		@ store r1
-		mov	r6, r1
-		str	r6, [r5]
-		add	r5, #4		@ store r2
-		mov	r6, r2
-		str	r6, [r5]
-		add	r5, #4		@ store r4
-		mov	r6, r4
-		str	r6, [r5]
-		ldmfd   sp!, {r5, r6}
-		.endm
-
-		.macro	add_nop_delay
-		nop
-		nop
-		nop
-		nop
-		nop	@ 5
-		nop
-		nop
-		nop
-		nop
-		nop	@ 10
-		nop
-		nop
-		nop
-		nop
-		nop	@ 15
-		nop
-		nop
-		nop
-		nop
-		nop	@ 20
-		nop
-		nop
-		nop
-		nop
-		nop	@ 25
-		nop
-		nop
-		nop
-		nop
-		nop	@ 30
-		nop
-		nop
-		.endm
-
-
 		.section ".start", #alloc, #execinstr
 /*
  * sort out different calling conventions
@@ -520,21 +455,12 @@ not_relocated:	mov	r0, #0
 		mov	r1, sp			@ malloc space above stack
 		add	r2, sp, #0x10000	@ 64k max
 		mov	r3, r7
-		write_uncompress_footprint 0xAABBCC01
 		bl	decompress_kernel
-		write_uncompress_footprint 0xAABBCC02
-		add_nop_delay
-		write_uncompress_footprint 0xAABBCC03
 		bl	cache_clean_flush
-		write_uncompress_footprint 0xAABBCC04
-		add_nop_delay
-		write_uncompress_footprint 0xAABBCC05
 		bl	cache_off
-		write_uncompress_footprint 0xAABBCC06
 		mov	r0, #0			@ must be zero
 		mov	r1, r7			@ restore architecture number
 		mov	r2, r8			@ restore atags pointer
-		store_regs_before_jumping_kernel
  ARM(		mov	pc, r4	)		@ call kernel
  THUMB(		bx	r4	)		@ entry point is always ARM
 

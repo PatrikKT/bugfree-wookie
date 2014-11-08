@@ -26,7 +26,6 @@
 #define SYNAPTICS_FW_3_2_PACKRAT 1115999
 #define SYNAPTICS_FW_NOCAL_PACKRAT 1293981
 #define SYNAPTICS_FW_2IN1_PACKRAT 1396865
-#define SYNAPTICS_3202_NOISE_LOG (1508458)
 
 
 #define SYN_CONFIG_SIZE 32 * 16
@@ -142,8 +141,8 @@ struct synaptics_i2c_rmi_platform_data {
 	uint8_t multitouch_calibration;
 	uint8_t psensor_detection;
 	uint8_t PixelTouchThreshold_bef_unlock;
-	uint16_t block_touch_time_near;
-	uint16_t block_touch_time_far;
+	uint8_t block_touch_time_near;
+	uint8_t block_touch_time_far;
 };
 
 struct page_description {

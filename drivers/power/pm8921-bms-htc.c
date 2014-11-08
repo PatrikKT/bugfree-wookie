@@ -159,6 +159,12 @@ struct pm8921_bms_chip {
 	int					level_ocv_update_stop_end;
 	unsigned int	criteria_sw_est_ocv;
 	unsigned int 	rconn_mohm_sw_est_ocv;
+	void (*get_pj_status) (int *full, int *status, int *exist);
+	struct single_row_lut	*pj_vth_discharge_lut;
+	struct single_row_lut	*pj_dvi_discharge_lut;
+	struct single_row_lut	*pj_vth_charge_lut;
+	struct single_row_lut	*pj_dvi_charge_lut;
+	struct single_row_lut	*pj_temp_lut;
 };
 
 static struct pm8921_bms_chip *the_chip;
@@ -233,6 +239,9 @@ static int ocv_update_stop_active_mask = OCV_UPDATE_STOP_BIT_CABLE_IN |
 											OCV_UPDATE_STOP_BIT_ATTR_FILE |
 											OCV_UPDATE_STOP_BIT_BOOT_UP;
 static int ocv_update_stop_reason;
+static int sw_ocv_update_stop_active_mask = OCV_UPDATE_STOP_BIT_ATTR_FILE |
+											OCV_UPDATE_STOP_BIT_BOOT_UP;
+static int sw_ocv_update_stop_reason;
 static int level_dropped_after_cable_out = 5;
 static int level_dropped_after_boot_up = 5;
 static int new_boot_soc;
@@ -1431,6 +1440,7 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 	int update_userspace = 1;
 	int cc_uah;
 	int rbatt;
+	int pj_full = 0, pj_chg_status = 0, pj_exist = 0;
 
 	calculate_soc_params(chip, raw, batt_temp, chargecycles,
 						&fcc_uah,
@@ -1506,8 +1516,12 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 		return soc;
 	}
 
-	if (the_chip->start_percent != -EINVAL) {
-		last_soc = soc;
+	if(the_chip->get_pj_status)
+		the_chip->get_pj_status(&pj_full, &pj_chg_status, &pj_exist);
+
+	if (the_chip->start_percent != -EINVAL ||
+		(pj_exist && (pj_chg_status == PJ_CHG_STATUS_DCHG))) {
+			last_soc = soc;
 	} else {
 		pr_info("soc = %d reporting last_soc = %d\n", soc, last_soc);
 		soc = last_soc;
@@ -1515,6 +1529,45 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 
 
 	return soc;
+}
+
+int pm8921_calculate_pj_level(int Vjk, int is_charging, int batt_temp)
+{
+	int i;
+	int Vth = 0, dVi = 0, ini = 0, temp = 0;
+
+	if (is_charging) {
+		for (i = 0; i < the_chip->pj_vth_charge_lut->cols; i++)
+			if (Vjk >= the_chip->pj_vth_charge_lut->y[i])
+				break;
+
+		Vth = the_chip->pj_vth_charge_lut->y[i];
+		dVi = the_chip->pj_dvi_charge_lut->y[i];
+		ini = the_chip->pj_vth_charge_lut->x[i];
+
+	} else {
+		for (i = 0; i < the_chip->pj_vth_discharge_lut->cols; i++)
+			if (Vjk >= the_chip->pj_vth_discharge_lut->y[i])
+				break;
+
+		Vth = the_chip->pj_vth_discharge_lut->y[i];
+		dVi = the_chip->pj_dvi_discharge_lut->y[i];
+		ini = the_chip->pj_vth_discharge_lut->x[i];
+	}
+
+	for (i = 0; i < the_chip->pj_temp_lut->cols; i++)
+		if (batt_temp >= (the_chip->pj_temp_lut->x[i]*10))
+			break;
+
+	temp = the_chip->pj_temp_lut->y[i];
+
+	pr_debug("%s: Vjk = %d, Vth = %d, dVi = %d, ini = %d, temp = %d(%d)\n",
+		__func__, Vjk, Vth, dVi, ini, temp, batt_temp);
+
+	if (dVi == 0) 
+		return -1;
+
+	return (100*((ini + 10*(Vjk - Vth)/dVi)*10 - temp)/(1000 - temp));
 }
 
 #define MIN_DELTA_625_UV	1000
@@ -1734,6 +1787,17 @@ static void disable_ocv_update_with_reason(bool disable, int reason)
 					pm8921_bms_start_ocv_updates();
 			}
 		}
+	}
+	prev_ocv_update_stop_reason = sw_ocv_update_stop_reason;
+	if (sw_ocv_update_stop_active_mask & reason) {
+		if (disable)
+			sw_ocv_update_stop_reason |= reason;
+		else
+			sw_ocv_update_stop_reason &= ~reason;
+
+		if (prev_ocv_update_stop_reason ^ sw_ocv_update_stop_reason)
+			pr_info("sw_ocv_update_stop_reason:0x%x->0x%d\n",
+							prev_ocv_update_stop_reason, sw_ocv_update_stop_reason);
 	}
 	mutex_unlock(&ocv_update_lock);
 }
@@ -2364,6 +2428,7 @@ static int set_battery_data(struct pm8921_bms_chip *chip)
 {
 	int battery_id_mv, batt_id;
 	struct pm8921_bms_battery_data* bms_battery_data;
+	struct pm8921_bms_pj_data* bms_pj_data;
 
 	
 	
@@ -2394,6 +2459,13 @@ static int set_battery_data(struct pm8921_bms_chip *chip)
 				= bms_battery_data->default_rbatt_mohm;
 		chip->delta_rbatt_mohm
 				= bms_battery_data->delta_rbatt_mohm;
+		if (bms_battery_data->level_ocv_update_stop_begin
+			&& bms_battery_data->level_ocv_update_stop_end) {
+			chip->level_ocv_update_stop_begin = bms_battery_data->level_ocv_update_stop_begin;
+			chip->level_ocv_update_stop_end = bms_battery_data->level_ocv_update_stop_end;
+			ocv_update_stop_active_mask = ocv_update_stop_active_mask |
+											OCV_UPDATE_STOP_BIT_BATT_LEVEL;
+		}
 	} else {
 		pr_err("bms_battery_data doesn't exist (id=%d)\n",
 					batt_id);
@@ -2408,6 +2480,19 @@ static int set_battery_data(struct pm8921_bms_chip *chip)
 		chip->delta_rbatt_mohm
 				= palladium_1500_data.delta_rbatt_mohm;
 	}
+
+	
+	bms_pj_data = htc_battery_cell_get_cur_cell_pj_cdata();
+	if (bms_pj_data) {
+		chip->pj_vth_discharge_lut = bms_pj_data->pj_vth_discharge_lut;
+		chip->pj_dvi_discharge_lut = bms_pj_data->pj_dvi_discharge_lut;
+		chip->pj_vth_charge_lut = bms_pj_data->pj_vth_charge_lut;
+		chip->pj_dvi_charge_lut = bms_pj_data->pj_dvi_charge_lut;
+		chip->pj_temp_lut = bms_pj_data->pj_temp_lut;
+	} else {
+		pr_info("Not support power jacket level calculate.\n");
+	}
+
 	return 0;
 }
 #else
@@ -2787,7 +2872,8 @@ int pm8921_bms_get_attr_text(char *buf, int size)
 	len += scnprintf(buf + len, size - len,
 			"ocv_update_stop_active_mask: 0x%x;\n", ocv_update_stop_active_mask);
 	len += scnprintf(buf + len, size - len,
-			"ocv_update_stop_reason: 0x%x;\n", ocv_update_stop_reason);
+			"ocv_update_stop_reason(sw): 0x%x(0x%x);\n", ocv_update_stop_reason,
+								sw_ocv_update_stop_reason);
 
 	read_soc_params_raw(the_chip, &raw);
 	read_rbatt_params_raw(the_chip, &rraw);
@@ -3089,7 +3175,7 @@ static void pm8921_bms_complete(struct device *dev)
 	htc_batt_bms_timer.no_ocv_update_period_ms += sr_time_period_ms;
 
 	if (htc_batt_bms_timer.no_ocv_update_period_ms > the_chip->criteria_sw_est_ocv
-		&& !(!!ocv_update_stop_reason))
+		&& !(!!sw_ocv_update_stop_reason))
 		pm8921_bms_estimate_ocv();
 }
 
@@ -3197,12 +3283,6 @@ static int __devinit pm8921_bms_probe(struct platform_device *pdev)
 	chip->cc_backup_uv = 0;
 	chip->ocv_reading_at_100 = 0;
 	chip->ocv_backup_uv = 0;
-	if (pdata->level_ocv_update_stop_begin && pdata->level_ocv_update_stop_end) {
-		chip->level_ocv_update_stop_begin = pdata->level_ocv_update_stop_begin;
-		chip->level_ocv_update_stop_end = pdata->level_ocv_update_stop_end;
-		ocv_update_stop_active_mask = ocv_update_stop_active_mask |
-										OCV_UPDATE_STOP_BIT_BATT_LEVEL;
-	}
 	chip->start_percent = -EINVAL;
 	chip->end_percent = -EINVAL;
 	chip->batt_temp_channel = pdata->bms_cdata.batt_temp_channel;
@@ -3210,6 +3290,7 @@ static int __devinit pm8921_bms_probe(struct platform_device *pdev)
 	chip->ref625mv_channel = pdata->bms_cdata.ref625mv_channel;
 	chip->ref1p25v_channel = pdata->bms_cdata.ref1p25v_channel;
 	chip->batt_id_channel = pdata->bms_cdata.batt_id_channel;
+	chip->get_pj_status = pdata->get_power_jacket_status;
 	chip->revision = pm8xxx_get_revision(chip->dev->parent);
 	chip->version = pm8xxx_get_version(chip->dev->parent);
 	INIT_WORK(&chip->calib_hkadc_work, calibrate_hkadc_work);

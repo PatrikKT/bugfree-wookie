@@ -134,8 +134,8 @@ struct synaptics_ts_data {
 	struct synaptics_virtual_key *button;
 	wait_queue_head_t syn_fw_wait;
 	atomic_t syn_fw_condition;
-	uint16_t block_touch_time_near;
-	uint16_t block_touch_time_far;
+	uint8_t block_touch_time_near;
+	uint8_t block_touch_time_far;
 	uint8_t block_touch_event;
 };
 
@@ -165,7 +165,7 @@ static void syn_block_touch(struct synaptics_ts_data *ts, int enable)
 	mutex_lock(&syn_block_mutex);
 	ts->block_touch_event = enable;
 	mutex_unlock(&syn_block_mutex);
-	printk(KERN_INFO "[TP] Block Touch Event:%d", enable);
+	printk(KERN_INFO "[TP] Block Touch Event:%d\n", enable);
 }
 
 static void syn_block_touch_work_func(struct work_struct *dummy)
@@ -2001,28 +2001,24 @@ static int synaptics_init_panel(struct synaptics_ts_data *ts)
 
 static void synaptics_ts_finger_func(struct synaptics_ts_data *ts)
 {
-	int ret = 0;
-	uint8_t buf[ts->finger_support * 8 ], noise_index[10], noise_state = 0;
+	int ret;
+	uint8_t buf[ts->finger_support * 8 ], noise_index[10];
+	uint16_t temp_im = 0, temp_cidim = 0;
 	static int x_pos[10] = {0}, y_pos[10] = {0};
 
 	memset(buf, 0x0, sizeof(buf));
 	memset(noise_index, 0x0, sizeof(noise_index));
-
-	if (ts->package_id > 3200 && ts->package_id < 3400) {
+	if (ts->package_id < 3400)
 		ret = i2c_syn_read(ts->client,
-				get_address_base(ts, ts->finger_func_idx, DATA_BASE), buf, sizeof(buf));
+			get_address_base(ts, 0x01, DATA_BASE) + 2, buf, sizeof(buf));
+	else {
 		ret = i2c_syn_read(ts->client,
-				get_address_base(ts, 0x54, DATA_BASE) + 0x0B , &noise_state, 1);
-		if ((ts->packrat_number >= SYNAPTICS_3202_NOISE_LOG) ? (noise_state > 0) : (noise_state == 2)) {
-			ret = i2c_syn_read(ts->client,
-					get_address_base(ts, 0x54, DATA_BASE) + 4, noise_index, sizeof(noise_index));
-			ts->debug_log_level |= BIT(17);
-		} else {
-			if (!ts->enable_noise_log)
-				ts->debug_log_level &= ~BIT(17);
-		}
+			get_address_base(ts, ts->finger_func_idx, DATA_BASE), buf, sizeof(buf));
+		ret = i2c_syn_read(ts->client,
+			get_address_base(ts, 0x54, DATA_BASE) + 4, noise_index, sizeof(noise_index));
+		temp_im = (noise_index[1] <<8) | noise_index[0];
+		temp_cidim = (noise_index[6] <<8) | noise_index[5];
 	}
-
 	if (ret < 0) {
 		i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r:1", __func__);
 	} else {
@@ -2102,15 +2098,17 @@ static void synaptics_ts_finger_func(struct synaptics_ts_data *ts)
 						finger_data[i][0] = ts->layout[1];
 					if(ts->width_factor && ts->height_factor){
 						printk(KERN_INFO
-							"[TP] Screen:F[%02d]:Up, X=%d, Y=%d, W=%d, Z=%d\n",
+							"[TP] Screen:F[%02d]:Up, X=%d, Y=%d, W=%d, Z=%d, IM:%d, CIDIM:%d, Freq:%d, NS:%d\n",
 							i+1, (x_pos[i]*ts->width_factor)>>SHIFT_BITS,
 							(y_pos[i]*ts->height_factor)>>SHIFT_BITS,
-							finger_data[i][2], finger_data[i][3]);
+							finger_data[i][2], finger_data[i][3],
+							temp_im, temp_cidim, noise_index[9], noise_index[4]);
 					} else {
 						printk(KERN_INFO
-							"[TP] Raw:F[%02d]:Up, X=%d, Y=%d, W=%d, Z=%d\n",
+							"[TP] Raw:F[%02d]:Up, X=%d, Y=%d, W=%d, Z=%d, IM:%d, CIDIM:%d, Freq:%d, NS:%d\n",
 							i+1, x_pos[i], y_pos[i],
-							finger_data[i][2], finger_data[i][3]);
+							finger_data[i][2], finger_data[i][3],
+							temp_im, temp_cidim, noise_index[9], noise_index[4]);
 					}
 				}
 				base += 5;
@@ -2303,18 +2301,20 @@ static void synaptics_ts_finger_func(struct synaptics_ts_data *ts)
 						if ((finger_press_changed & BIT(i)) && ts->debug_log_level & BIT(3)) {
 							if(ts->width_factor && ts->height_factor){
 								printk(KERN_INFO
-									"[TP] Screen:F[%02d]:Down, X=%d, Y=%d, W=%d, Z=%d\n",
+									"[TP] Screen:F[%02d]:Down, X=%d, Y=%d, W=%d, Z=%d, IM:%d, CIDIM:%d, Freq:%d, NS:%d\n",
 									i+1, (finger_data[i][0]*ts->width_factor)>>SHIFT_BITS,
 									(finger_data[i][1]*ts->height_factor)>>SHIFT_BITS,
-									finger_data[i][2], finger_data[i][3]);
+									finger_data[i][2], finger_data[i][3],
+									temp_im, temp_cidim, noise_index[9], noise_index[4]);
 							} else {
 								printk(KERN_INFO
-									"[TP] Raw:F[%02d]:Down, X=%d, Y=%d, W=%d, Z=%d\n",
+									"[TP] Raw:F[%02d]:Down, X=%d, Y=%d, W=%d, Z=%d, IM:%d, CIDIM:%d, Freq:%d, NS:%d\n",
 									i+1, finger_data[i][0], finger_data[i][1],
-									finger_data[i][2], finger_data[i][3]);
+									finger_data[i][2], finger_data[i][3],
+									temp_im, temp_cidim, noise_index[9], noise_index[4]);
 							}
 							if ((ts->block_touch_time_near | ts->block_touch_time_far) && ts->block_touch_event)
-								printk(KERN_INFO "[TP] Block This Event!!");
+								printk(KERN_INFO "[TP] Block This Event!!\n");
 						}
 
 						if (ts->pre_finger_data[0][0] < 2) {
@@ -2360,23 +2360,12 @@ static void synaptics_ts_finger_func(struct synaptics_ts_data *ts)
 								"[TP] Finger %d=> X:%d, Y:%d W:%d, Z:%d\n",
 								i + 1, finger_data[i][0], finger_data[i][1],
 								finger_data[i][2], finger_data[i][3]);
-						if (ts->debug_log_level & BIT(17)) {
-							if (ts->packrat_number >= SYNAPTICS_3202_NOISE_LOG) {
-								if (ts->debug_log_level & BIT(3))
-									pr_info("[TP] Finger %d=> X:%d, Y:%d W:%d, Z:%d, IM:0x%04X, VM:0x%04X, Freq:%d, NS:%d\n",
-											i + 1, finger_data[i][0], finger_data[i][1], finger_data[i][2], finger_data[i][3],
-											(noise_index[2] << 8 | noise_index[1]), (noise_index[6] << 8 | noise_index[5]),
-											noise_index[0], noise_index[7]);
-								else
-									pr_info("[TP] Finger %d=> IM:0x%04X, VM:0x%04X, Freq:%d, NS:%d\n",
-											i + 1, (noise_index[2] << 8 | noise_index[1]), (noise_index[6] << 8 | noise_index[5]),
-											noise_index[0], noise_index[7]);
-
-							} else
-								pr_info("[TP] Finger %d=> X:%d, Y:%d W:%d, Z:%d, IM:%d, CIDIM:%d, Freq:%d, NS:%d\n",
-									i + 1, finger_data[i][0], finger_data[i][1], finger_data[i][2], finger_data[i][3],
-									noise_index[1] | noise_index[0], noise_index[6] | noise_index[5], noise_index[9], noise_index[4]);
-						}
+						if (ts->debug_log_level & BIT(17))
+							printk(KERN_INFO
+								"[TP] Finger %d=> X:%d, Y:%d W:%d, Z:%d, IM:%d, CIDIM:%d, Freq:%d, NS:%d\n",
+								i + 1, finger_data[i][0], finger_data[i][1], finger_data[i][2],
+								finger_data[i][3], noise_index[1] | noise_index[0],
+								noise_index[6] | noise_index[5], noise_index[9], noise_index[4]);
 					}
 					if (ts->packrat_number < SYNAPTICS_FW_NOCAL_PACKRAT) {
 #ifdef SYN_CALIBRATION_CONTROL
@@ -2447,113 +2436,58 @@ static void synaptics_ts_report_func(struct synaptics_ts_data *ts)
 static void synaptics_ts_button_func(struct synaptics_ts_data *ts)
 {
 	int ret;
-	uint8_t data = 0;
+	uint8_t data = 0, idx = 0;
 	uint16_t x_position = 0, y_position = 0;
 
 	ret = i2c_syn_read(ts->client,
 		get_address_base(ts, 0x1A, DATA_BASE), &data, 1);
 	if (data) {
-		if (data & 0x01) {
-			printk("[TP] back key pressed\n");
-			vk_press = 1;
-			if (ts->button) {
-				if (ts->button[0].index) {
-					x_position = (ts->button[0].x_range_min + ts->button[0].x_range_max) / 2;
-					y_position = (ts->button[0].y_range_min + ts->button[0].y_range_max) / 2;
-				}
+		vk_press = 1;
+		if (ts->button) {
+			idx =	(data == 0x01 ? 0:
+				 data == 0x02 ? 1:
+				 data == 0x04 ? 2:
+				 100);
+
+			if (idx == 100) {
+				vk_press = 0;
+				pr_err("[TP] vk_data:%#x, idx=%d", data, idx);
+				return;
 			}
-			if (ts->htc_event == SYN_AND_REPORT_TYPE_A) {
-				if (ts->support_htc_event) {
-					input_report_abs(ts->input_dev, ABS_MT_AMPLITUDE,
-						100 << 16 | 100);
-					input_report_abs(ts->input_dev, ABS_MT_POSITION,
-						x_position << 16 | y_position);
-				}
-				input_report_abs(ts->input_dev, ABS_MT_TRACKING_ID, 0);
-				input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR,
-					100);
-				input_report_abs(ts->input_dev, ABS_MT_WIDTH_MAJOR,
-					100);
-				input_report_abs(ts->input_dev, ABS_MT_PRESSURE,
-					100);
-				input_report_abs(ts->input_dev, ABS_MT_POSITION_X,
-					x_position);
-				input_report_abs(ts->input_dev, ABS_MT_POSITION_Y,
-					y_position);
-				input_mt_sync(ts->input_dev);
-			} else if (ts->htc_event == SYN_AND_REPORT_TYPE_B) {
-				if (ts->support_htc_event) {
-					input_report_abs(ts->input_dev, ABS_MT_AMPLITUDE,
-						100 << 16 | 100);
-					input_report_abs(ts->input_dev, ABS_MT_POSITION,
-						x_position << 16 | y_position);
-				}
-				input_mt_slot(ts->input_dev, 0);
-				input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER,
-				1);
-				input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR,
-					100);
-				input_report_abs(ts->input_dev, ABS_MT_WIDTH_MAJOR,
-					100);
-				input_report_abs(ts->input_dev, ABS_MT_PRESSURE,
-					100);
-				input_report_abs(ts->input_dev, ABS_MT_POSITION_X,
-					x_position);
-				input_report_abs(ts->input_dev, ABS_MT_POSITION_Y,
-					y_position);
-			}
+			x_position = (ts->button[idx].x_range_min + ts->button[idx].x_range_max) / 2;
+			y_position = (ts->button[idx].y_range_min + ts->button[idx].y_range_max) / 2;
 		}
-		else if (data & 0x02) {
-			printk("[TP] home key pressed\n");
-			vk_press = 1;
-			if (ts->button) {
-				if (ts->button[1].index) {
-					x_position = (ts->button[1].x_range_min + ts->button[1].x_range_max) / 2;
-					y_position = (ts->button[1].y_range_min + ts->button[1].y_range_max) / 2;
-				}
-			}
-			if (ts->htc_event == SYN_AND_REPORT_TYPE_A) {
-				if (ts->support_htc_event) {
-					input_report_abs(ts->input_dev, ABS_MT_AMPLITUDE,
-						100 << 16 | 100);
-					input_report_abs(ts->input_dev, ABS_MT_POSITION,
-						x_position << 16 | y_position);
-				}
-				input_report_abs(ts->input_dev, ABS_MT_TRACKING_ID, 0);
-				input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR,
-					100);
-				input_report_abs(ts->input_dev, ABS_MT_WIDTH_MAJOR,
-					100);
-				input_report_abs(ts->input_dev, ABS_MT_PRESSURE,
-					100);
-				input_report_abs(ts->input_dev, ABS_MT_POSITION_X,
-					x_position);
-				input_report_abs(ts->input_dev, ABS_MT_POSITION_Y,
-					y_position);
-				input_mt_sync(ts->input_dev);
-			} else if (ts->htc_event == SYN_AND_REPORT_TYPE_B) {
-				if (ts->support_htc_event) {
-					input_report_abs(ts->input_dev, ABS_MT_AMPLITUDE,
-						100 << 16 | 100);
-					input_report_abs(ts->input_dev, ABS_MT_POSITION,
-						x_position << 16 | y_position);
-				}
-				input_mt_slot(ts->input_dev, 0);
-				input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER,
-				1);
-				input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR,
-					100);
-				input_report_abs(ts->input_dev, ABS_MT_WIDTH_MAJOR,
-					100);
-				input_report_abs(ts->input_dev, ABS_MT_PRESSURE,
-					100);
-				input_report_abs(ts->input_dev, ABS_MT_POSITION_X,
-					x_position);
-				input_report_abs(ts->input_dev, ABS_MT_POSITION_Y,
-					y_position);
-			}
+		data == 0x01 ? pr_info("[TP] back key pressed, vk=%x\n", data) :
+		data == 0x02 ? pr_info("[TP] home key pressed, vk=%x\n", data) :
+		data == 0x04 ? pr_info("[TP] app key pressed , vk=%x\n", data) :
+		pr_info("[TP] vk=%#x\n", data);
+
+		if (ts->support_htc_event) {
+			input_report_abs(ts->input_dev, ABS_MT_AMPLITUDE, 100 << 16 | 100);
+			input_report_abs(ts->input_dev, ABS_MT_POSITION, x_position << 16 | y_position);
 		}
-	}else {
+		switch (ts->htc_event) {
+		case SYN_AND_REPORT_TYPE_A:
+			input_report_abs(ts->input_dev, ABS_MT_TRACKING_ID, 0);
+			break;
+		case SYN_AND_REPORT_TYPE_B:
+			input_mt_slot(ts->input_dev, 0);
+			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, 1);
+			break;
+	}
+		input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 100);
+		input_report_abs(ts->input_dev, ABS_MT_WIDTH_MAJOR, 100);
+		input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 100);
+		input_report_abs(ts->input_dev, ABS_MT_POSITION_X, x_position);
+		input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, y_position);
+		switch (ts->htc_event) {
+		case SYN_AND_REPORT_TYPE_A:
+			input_mt_sync(ts->input_dev);
+			break;
+		case SYN_AND_REPORT_TYPE_B:
+			break;
+		}
+	} else {
 		printk("[TP] virtual key released\n");
 		vk_press = 0;
 		if (ts->htc_event == SYN_AND_REPORT_TYPE_A) {
@@ -2635,12 +2569,6 @@ static irqreturn_t synaptics_irq_thread(int irq, void *ptr)
 	if (ret < 0) {
 		i2c_syn_error_handler(ts, ts->i2c_err_handler_en, "r", __func__);
 	} else {
-		if (buf & get_address_base(ts, 0x1A, INTR_SOURCE)) {
-			if (!ts->finger_count)
-				synaptics_ts_button_func(ts);
-			else
-				printk("[TP] Ignore VK interrupt due to 2d points did not leave\n");
-		}
 		if (buf & get_address_base(ts, ts->finger_func_idx, INTR_SOURCE)) {
 			if (!vk_press) {
 				synaptics_ts_finger_func(ts);
@@ -2651,6 +2579,12 @@ static irqreturn_t synaptics_irq_thread(int irq, void *ptr)
 					printk(KERN_INFO "[TP] Touch latency = %ld us\n", timeDelta.tv_nsec/1000);
 				}
 			}
+		}
+		if (buf & get_address_base(ts, 0x1A, INTR_SOURCE)) {
+			if (!ts->finger_count)
+				synaptics_ts_button_func(ts);
+			else
+				printk("[TP] Ignore VK interrupt due to 2d points did not leave\n");
 		}
 		if (buf & get_address_base(ts, 0x01, INTR_SOURCE))
 			synaptics_ts_status_func(ts);
@@ -3697,7 +3631,7 @@ static int synaptics_ts_suspend(struct i2c_client *client, pm_message_t mesg)
 
 static int synaptics_ts_resume(struct i2c_client *client)
 {
-	int ret, i;
+	int ret;
 	struct synaptics_ts_data *ts = i2c_get_clientdata(client);
 	printk(KERN_INFO "[TP] %s: enter\n", __func__);
 
@@ -3728,17 +3662,6 @@ static int synaptics_ts_resume(struct i2c_client *client)
 		}
 		input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0);
 		input_sync(ts->input_dev);
-	} else if (ts->htc_event == SYN_AND_REPORT_TYPE_B) {
-		if (ts->package_id >= 3400) {
-			for (i = 0; i < ts->finger_support; i++) {
-				input_mt_slot(ts->input_dev, i);
-				input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, 0);
-				input_sync(ts->input_dev);
-				
-			}
-			ts->tap_suppression = 0;
-			ts->finger_pressed = 0;
-		}
 	} else if (ts->htc_event == SYN_AND_REPORT_TYPE_HTC) {
 		input_report_abs(ts->input_dev, ABS_MT_AMPLITUDE, 0);
 		input_report_abs(ts->input_dev, ABS_MT_POSITION, 1 << 31);

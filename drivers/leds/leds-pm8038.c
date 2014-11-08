@@ -27,6 +27,7 @@
 #include <linux/android_alarm.h>
 #include <linux/module.h>
 #include <mach/board.h>
+#include <mach/htc_battery_common.h>
 
 #define SSBI_REG_ADDR_DRV_KEYPAD	0x48
 #define PM8XXX_DRV_KEYPAD_BL_MASK	0xf0
@@ -772,12 +773,13 @@ static int __devinit init_wled(struct pm8xxx_led_data *led)
 		val = (val & ~WLED_CS_OUT_MASK) | WLED_CS_OUT_SET;
 
 	
-	if (board_mfg_mode() == 4 || board_mfg_mode() == 5)
+	if (board_mfg_mode() == 4 ||
+		(board_mfg_mode() == 5 && !(htc_battery_get_zcharge_mode() & 0x1)))
 		val = val & ~WLED_EN_MASK;
 	else
 		val |= WLED_EN_MASK;
 
-#if defined(CONFIG_MACH_DUMMY)
+#if defined(CONFIG_MACH_TC2)
 	
 	val = val & ~WLED_EN_MASK;
 #endif

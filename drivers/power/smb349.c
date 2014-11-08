@@ -359,6 +359,7 @@ static int get_prechg_curr_def(int targ_ma_curr)
 	return ret;
 }
 
+#if 0
 static int get_dc_input_curr_def(int targ_ma_curr)
 {
 	int ret = 0;
@@ -420,6 +421,8 @@ static int get_dc_input_curr_def(int targ_ma_curr)
 
 	return ret;
 }
+
+#endif
 
 static int get_fastchg_curr_def(int targ_ma_curr)
 {
@@ -3016,6 +3019,31 @@ int smb349_is_batt_charge_enable(void)
 EXPORT_SYMBOL(smb349_is_batt_charge_enable);
 
 
+#ifdef CONFIG_DUTY_CYCLE_LIMIT
+int smb349_limit_charge_enable(int chg_limit_reason, int chg_limit_timer_sub_mask, int limit_charge_timer_ma)
+{
+	int ret;
+	int chg_limit_current = LIMIT_PRECHG_CURR;
+
+	pr_smb_info("%s:chg_limit_reason=%d, chg_limit_timer_sub_mask=%d, limit_charge_timer_ma=%d\n",
+		__func__, chg_limit_reason, chg_limit_timer_sub_mask, limit_charge_timer_ma);
+
+	
+	if (limit_charge_timer_ma != 0 && !!(chg_limit_reason & chg_limit_timer_sub_mask))
+		chg_limit_current = limit_charge_timer_ma;
+
+	pr_smb_info("%s:chg_limit_current = %d\n", __func__, chg_limit_current);
+
+	ret = _smb34x_set_prechg_curr(get_prechg_curr_def(chg_limit_current));
+
+	if (chg_limit_reason)
+		ret = _smb349_limit_charge_enable(1);
+	else
+		ret = _smb349_limit_charge_enable(0);
+
+	return 0;
+}
+#else
 int smb349_limit_charge_enable(bool enable)
 {
 	int ret = 0;
@@ -3036,6 +3064,7 @@ int smb349_limit_charge_enable(bool enable)
 	return ret;
 }
 EXPORT_SYMBOL(smb349_limit_charge_enable);
+#endif
 
 
 static void smb_state_check_worker(struct work_struct *w)
@@ -3228,9 +3257,9 @@ static	void aicl_check_worker(struct work_struct *work)
 	
 	smb349_set_max_charging_vol();
 
-	
-	
-	
+
+	if (smb_adapter_type == SMB_ADAPTER_KDDI)
+		smb349_set_AICL_mode(0);
 
 
 	
@@ -3484,6 +3513,7 @@ int smb349_set_hsml_target_ma(int target_ma)
 
 EXPORT_SYMBOL(smb349_set_hsml_target_ma);
 
+#if 0
 static int get_proper_dc_input_curr_limit_via_hsml(int current_ma)
 {
 
@@ -3510,7 +3540,7 @@ static int get_proper_dc_input_curr_limit_via_hsml(int current_ma)
 	return get_dc_input_curr_def(target_ma);
 }
 
-
+#endif
 
 static int set_disable_status_param(const char *val, struct kernel_param *kp)
 {
@@ -3721,9 +3751,6 @@ static int __init smb349_init(void)
 	mutex_init(&pwrsrc_lock);
 	mutex_init(&aicl_sm_lock);
 	mutex_init(&phase_lock);
-
-	
-	get_proper_dc_input_curr_limit_via_hsml(0);
 
 	return i2c_add_driver(&smb349_driver);
 }

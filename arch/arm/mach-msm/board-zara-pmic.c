@@ -475,7 +475,7 @@ static struct msm_ssbi_platform_data msm8930_ssbi_pm8038_pdata __devinitdata = {
 
 void __init msm8930_init_pmic(void)
 {
-	pmic_reset_irq = 0;
+	pmic_reset_irq = PM8038_IRQ_BASE + PM8038_RESOUT_IRQ;
 	msm8960_device_ssbi_pmic.dev.platform_data =
 				&msm8930_ssbi_pm8038_pdata;
 	pm8038_platform_data.num_regulators

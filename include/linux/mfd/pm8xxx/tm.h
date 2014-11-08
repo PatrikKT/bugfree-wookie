@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -20,21 +20,20 @@
 #define PM8XXX_TM_DEV_NAME	"pm8xxx-tm"
 
 enum pm8xxx_tm_adc_type {
-	PM8XXX_TM_ADC_NONE,
+	PM8XXX_TM_ADC_NONE,	
 	PM8XXX_TM_ADC_PM8058_ADC,
 	PM8XXX_TM_ADC_PM8XXX_ADC,
 };
 
 struct pm8xxx_tm_core_data {
-	char			*tm_name;
-	char			*irq_name_temp_stat;
-	char			*irq_name_over_temp;
-	u16			reg_addr_temp_alarm_ctrl;
-	u16			reg_addr_temp_alarm_pwm;
-	enum pm8xxx_tm_adc_type	adc_type;
-	int			adc_channel;
-	unsigned long		default_no_adc_temp;
-	bool			allow_software_override;
+	int				adc_channel;
+	unsigned long			default_no_adc_temp;
+	enum pm8xxx_tm_adc_type		adc_type;
+	u16				reg_addr_temp_alarm_ctrl;
+	u16				reg_addr_temp_alarm_pwm;
+	char				*tm_name;
+	char				*irq_name_temp_stat;
+	char				*irq_name_over_temp;
 };
 
 #endif

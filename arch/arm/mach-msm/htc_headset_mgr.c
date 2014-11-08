@@ -260,6 +260,10 @@ int headset_notifier_register(struct headset_notifier *notifier)
 		HS_LOG("Register 1WIRE_REPORT_TYPE notifier");
 		hs_mgr_notifier.hs_1wire_report_type = notifier->func;
 		break;
+	case HEADSET_REG_1WIRE_OPEN:
+		HS_LOG("Register HEADSET_REG_1WIRE_OPEN notifier");
+		hs_mgr_notifier.hs_1wire_open = notifier->func;
+		break;
 	case HEADSET_REG_HS_INSERT:
 		HS_LOG("Register HS_INSERT notifier");
 		hs_mgr_notifier.hs_insert = notifier->func;
@@ -664,18 +668,6 @@ static void mic_detect_work_func(struct work_struct *work)
 		return;
 	}
 
-	if (mic == HEADSET_NO_MIC) {
-		mutex_unlock(&hi->mutex_lock);
-		if (hi->mic_detect_counter--) {
-			queue_delayed_work(detect_wq, &mic_detect_work,
-					   HS_JIFFIES_MIC_DETECT);
-		} else {
-			HS_LOG("MIC polling timeout (Headset NO MIC)");
-			set_35mm_hw_state(0);			
-		}
-		return;
-	}
-
 	old_state = switch_get_state(&hi->sdev_h2w);
 	if (!(old_state & MASK_35MM_HEADSET) && !(hi->is_ext_insert)) {
 		HS_LOG("Headset has been removed");
@@ -693,6 +685,7 @@ static void mic_detect_work_func(struct work_struct *work)
 	case HEADSET_NO_MIC:
 		new_state |= BIT_HEADSET_NO_MIC;
 		HS_LOG("HEADSET_NO_MIC");
+		set_35mm_hw_state(0);
 		break;
 	case HEADSET_MIC:
 		new_state |= BIT_HEADSET;
@@ -737,9 +730,11 @@ static void mic_detect_work_func(struct work_struct *work)
 	} else
 		HS_LOG("MIC status has not changed");
 
+if (mic != HEADSET_NO_MIC)
+	{
 	if (hs_mgr_notifier.key_int_enable)
 		hs_mgr_notifier.key_int_enable(1);
-
+	}
 	mutex_unlock(&hi->mutex_lock);
 }
 
@@ -969,6 +964,7 @@ static void insert_detect_work_func(struct work_struct *work)
 	case HEADSET_NO_MIC:
 		new_state |= BIT_HEADSET_NO_MIC;
 		HS_LOG_TIME("HEADSET_NO_MIC");
+		set_35mm_hw_state(0);
 		break;
 	case HEADSET_MIC:
 		new_state |= BIT_HEADSET;
@@ -1030,8 +1026,6 @@ static void insert_detect_work_func(struct work_struct *work)
 
 	if (mic == HEADSET_UNKNOWN_MIC)
 		update_mic_status(HS_DEF_MIC_DETECT_COUNT);
-	else if (mic == HEADSET_NO_MIC)
-		update_mic_status(0);
 	else if (mic == HEADSET_UNSTABLE)
 		update_mic_status(0);
 	else if (mic == HEADSET_INDICATOR) {
@@ -2019,7 +2013,7 @@ static int htc_headset_mgr_resume(struct platform_device *pdev)
 {
 	HS_DBG();
 	if (hi->one_wire_mode == 1)
-		hs_notify_key_irq();
+		hs_mgr_notifier.hs_1wire_open();
 	return 0;
 }
 

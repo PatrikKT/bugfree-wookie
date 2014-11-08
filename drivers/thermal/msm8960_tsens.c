@@ -59,7 +59,7 @@ enum tsens_trip_type {
 #define TSENS_UPPER_STATUS_CLR		BIT((tsens_status_cntl_start + 2))
 #define TSENS_MAX_STATUS_MASK		BIT((tsens_status_cntl_start + 3))
 
-#define TSENS_MEASURE_PERIOD				1
+#define TSENS_MEASURE_PERIOD				4 
 #define TSENS_8960_SLP_CLK_ENA				BIT(26)
 
 #define TSENS_THRESHOLD_ADDR		(MSM_CLK_CTL_BASE + 0x00003624)
@@ -102,7 +102,7 @@ enum tsens_trip_type {
 #define TSENS_RED_SHIFT					8
 #define TSENS_8960_QFPROM_SHIFT				4
 #define TSENS_SENSOR_QFPROM_SHIFT			2
-#define TSENS_SENSOR9_SHIFT				12
+#define TSENS_SENSOR9_SHIFT                            12
 #define TSENS_SENSOR0_SHIFT				3
 #define TSENS_MASK1					1
 
@@ -751,14 +751,14 @@ static void tsens8960_sensor_mode_init(void)
 		writel_relaxed(reg_cntl &
 				~((((1 << tmdev->tsens_num_sensor) - 1) >> 1)
 				<< (TSENS_SENSOR0_SHIFT + 1)), TSENS_CNTL_ADDR);
-
-		reg_cntl = readl_relaxed(TSENS_CNTL_ADDR);
-		writel_relaxed(reg_cntl |
-				(1 << TSENS_SENSOR9_SHIFT), TSENS_CNTL_ADDR);
-
-
 		tmdev->sensor[TSENS_MAIN_SENSOR].mode = THERMAL_DEVICE_ENABLED;
-		tmdev->sensor[9].mode = THERMAL_DEVICE_ENABLED;
+
+#ifdef CONFIG_MSM8930_ONLY
+               reg_cntl = readl_relaxed(TSENS_CNTL_ADDR);
+               writel_relaxed(reg_cntl |
+                               (1 << TSENS_SENSOR9_SHIFT), TSENS_CNTL_ADDR);
+               tmdev->sensor[9].mode = THERMAL_DEVICE_ENABLED;
+#endif
 	}
 }
 
@@ -1009,6 +1009,17 @@ static int tsens_calib_sensors8960(void)
 	return 0;
 }
 
+static int tsens_check_version_support(void)
+{
+	int rc = 0;
+
+	if (tmdev->hw_type == MSM_8960)
+		if (SOCINFO_VERSION_MAJOR(socinfo_get_version()) == 1)
+			rc = -ENODEV;
+
+	return rc;
+}
+
 static int tsens_calib_sensors(void)
 {
 	int rc = -ENODEV;
@@ -1047,6 +1058,13 @@ int msm_tsens_early_init(struct tsens_platform_data *pdata)
 	tmdev->hw_type = pdata->hw_type;
 	tmdev->patherm0 = pdata->patherm0;
 	tmdev->patherm1 = pdata->patherm1;
+
+	rc = tsens_check_version_support();
+	if (rc < 0) {
+		kfree(tmdev);
+		tmdev = NULL;
+		return rc;
+	}
 
 	rc = tsens_calib_sensors();
 	if (rc < 0) {

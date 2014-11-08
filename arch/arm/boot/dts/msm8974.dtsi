@@ -389,16 +389,6 @@
 		};
 	};
 
-	qcom,msm-thermal {
-		compatible = "qcom,msm-thermal";
-		qcom,sensor-id = <0>;
-		qcom,poll-ms = <250>;
-		qcom,limit-temp = <60>;
-		qcom,temp-hysteresis = <10>;
-		qcom,freq-step = <2>;
-	};
-};
-
 	qcom,msm-pcm-hostless {
 		compatible = "qcom,msm-pcm-hostless";
 	};
@@ -491,16 +481,5 @@
 		qcom,firmware-name = "venus";
 		qcom,firmware-min-paddr = <0xF500000>;
 		qcom,firmware-max-paddr = <0xFA00000>;
-	};
-
-	tsens@fc4a8000 {
-		compatible = "qcom,msm-tsens";
-		reg = <0xfc4a8000 0x2000>,
-		      <0xfc4b80d0 0x5>;
-		reg-names = "tsens_physical", "tsens_eeprom_physical";
-		interrupts = <0 184 0>;
-		qcom,sensors = <11>;
-		qcom,slope = <3200 3200 3200 3200 3200 3200 3200 3200 3200
-				3200 3200>;
 	};
 };

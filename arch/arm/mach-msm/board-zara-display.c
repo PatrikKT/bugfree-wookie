@@ -231,7 +231,6 @@ static struct msm_bus_scale_pdata mdp_bus_scale_pdata = {
 static struct msm_panel_common_pdata mdp_pdata = {
 	.gpio = MDP_VSYNC_GPIO,
 	.mdp_max_clk = 200000000,
-	.mdp_min_clk = 85330000,
 #ifdef CONFIG_MSM_BUS_SCALING
 	.mdp_bus_scale_table = &mdp_bus_scale_pdata,
 #endif
@@ -297,10 +296,6 @@ static int mipi_dsi_panel_power(int on)
 			pr_err("set_voltage l10 failed, rc=%d\n", rc);
 			return -EINVAL;
 		}
-
-		
-		gpio_tlmm_config(GPIO_CFG(MSM_LCD_ID0, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, 0), GPIO_CFG_ENABLE);
-		
 
 		dsi_power_on = true;
 	}
@@ -1066,10 +1061,6 @@ static void zara_set_backlight(struct msm_fb_data_type *mfd)
 		return;
 	}
 
-	if (mdp4_overlay_dsi_state_get() <= ST_DSI_SUSPEND) {
-		return;
-	}
-
 	
 	if (led_pwm[1] == 0) {
 		cmdreq.cmds = novatek_dim_off_cmds;
@@ -1205,7 +1196,7 @@ static struct mipi_dsi_phy_ctrl mipi_dsi_lg_novatek_phy_ctrl = {
 	
 	{0x00, 0x52, 0x30, 0xc4, 0x00, 0x10, 0x07, 0x62,
 	0x71, 0x88, 0x99,
-	0x0, 0x14, 0x03, 0x0, 0x2, 0x0, 0x20, 0x0, 0x01, 0x0},
+	0x0, 0x14, 0x03, 0x0, 0x2, 0x0e, 0x01, 0x0, 0x01, 0x0},
 };
 
 static struct mipi_dsi_reg_set dsi_video_mode_reg_db[] = {
@@ -1250,7 +1241,6 @@ static int __init mipi_cmd_lg_novatek_init(void)
 	pinfo.lcdc.border_clr = 0;  
 	pinfo.lcdc.underflow_clr = 0xff;  
 	pinfo.lcdc.hsync_skew = 0;
-	pinfo.lcdc.blt_ctrl = MDP4_BLT_SWITCH_TG_OFF;
 	pinfo.bl_max = 255;
 	pinfo.bl_min = 1;
 	pinfo.fb_num = 2;

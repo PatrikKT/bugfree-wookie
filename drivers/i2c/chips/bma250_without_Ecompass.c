@@ -736,6 +736,8 @@ static int BMA_Init(void)
 	char buffer[4] = "";
 	int ret;
 	unsigned char range = 0, bw = 0;
+	char range_from_chip = 0, bw_from_chip = 0;
+	int i = 0;
 
 	memset(buffer, 0, 4);
 
@@ -743,37 +745,67 @@ static int BMA_Init(void)
 	ret = BMA_I2C_RxData(buffer, 2);
 	if (ret < 0)
 		return -1;
-	D("%s: bma250_RANGE_SEL_REG++: range = 0x%02x, bw = 0x%02x\n",
-		__func__, buffer[0], buffer[1]);
-	range = (buffer[0] & 0xF0) | DEFAULT_RANGE;
-	bw = (buffer[1] & 0xE0) | DEFAULT_BW;
 
-	
+	range_from_chip = buffer[0];
+	bw_from_chip = buffer[1];
+	D("%s++: range = 0x%02X, bw = 0x%02X\n",
+		__func__, range_from_chip, bw_from_chip);
 
-	buffer[1] = bw;
-	buffer[0] = bma250_BW_SEL_REG;
-	ret = BMA_I2C_TxData(buffer, 2);
-	if (ret < 0) {
-		E("%s: Write bma250_BW_SEL_REG fail\n", __func__);
-		return -1;
+	range = DEFAULT_RANGE;
+	bw = DEFAULT_BW;
+
+	for (i = 0; i < RETRY_TIMES; i++) {
+		if (bw_from_chip != DEFAULT_BW) {
+			buffer[1] = bw;
+			buffer[0] = bma250_BW_SEL_REG;
+			D("%s: i = %d, bw_from_chip = 0x%02X, writing buffer[1] = 0x%02X",
+				__func__, i, bw_from_chip, buffer[1]);
+			ret = BMA_I2C_TxData(buffer, 2);
+			if (ret < 0) {
+				E("%s: Write bma250_BW_SEL_REG fail\n",
+					__func__);
+				return -1;
+			}
+
+			buffer[0] = bma250_BW_SEL_REG;
+			ret = BMA_I2C_RxData(buffer, 1);
+			if (ret < 0) {
+				E("%s: Read bma250_BW_SEL_REG fail\n",
+					__func__);
+				return -1;
+			}
+			bw_from_chip = buffer[0];
+		} else
+			break;
 	}
 
-	buffer[1] = range;
-	buffer[0] = bma250_RANGE_SEL_REG;
-	ret = BMA_I2C_TxData(buffer, 2);
-	if (ret < 0) {
-		E("%s: Write bma250_BW_SEL_REG fail\n", __func__);
-		return -1;
+	for (i = 0; i < RETRY_TIMES; i++) {
+		if (range_from_chip != DEFAULT_RANGE) {
+			buffer[1] = range;
+			buffer[0] = bma250_RANGE_SEL_REG;
+			D("%s: i = %d, range_from_chip = 0x%02X, writing buffer[1] = 0x%02X",
+				__func__, i, range_from_chip, buffer[1]);
+			ret = BMA_I2C_TxData(buffer, 2);
+			if (ret < 0) {
+				E("%s: Write bma250_BW_SEL_REG fail\n",
+					__func__);
+				return -1;
+			}
+
+			buffer[0] = bma250_RANGE_SEL_REG;
+			ret = BMA_I2C_RxData(buffer, 1);
+			if (ret < 0) {
+				E("%s: Read bma250_RANGE_SEL_REG fail\n",
+					__func__);
+				return -1;
+			}
+			range_from_chip = buffer[0];
+		} else
+			break;
 	}
 
-	
-	buffer[0] = bma250_RANGE_SEL_REG;
-	ret = BMA_I2C_RxData(buffer, 2);
-	if (ret < 0)
-		return -1;
-
-	D("%s: bma250_RANGE_SEL_REG--: range = 0x%02x, bw = 0x%02x\n",
-		__func__, buffer[0], buffer[1]);
+	D("%s--: range = 0x%02X, bw = 0x%02X\n",
+		__func__, range_from_chip, bw_from_chip);
 
 	return 0;
 
@@ -1114,14 +1146,15 @@ int sensor_open(void)
 
 	if (atomic_read(&a_flag)) {
 		for (i = 0; i < RETRY_TIMES; i++) {
-			ret = BMA_Init();
-			if (ret) {
-				E("BMA_Init error\n");
-				return ret;
-			}
 			BMA_set_mode(bma250_MODE_NORMAL);
 
 			usleep(2000);
+
+			ret = BMA_Init();
+			if (ret) {
+				E("BMA_Init error, ret = %d\n", ret);
+				return ret;
+			}
 
 			buffer = bma250_MODE_CTRL_REG;
 			ret = BMA_I2C_RxData(&buffer, 1);

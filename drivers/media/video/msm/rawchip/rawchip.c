@@ -257,13 +257,11 @@ static int rawchip_get_interrupt(struct rawchip_ctrl *raw_dev, void __user *arg)
 		atomic_set(&rawchipCtrl->check_intr1, 0);
 	}
 	interrupt_type = interrupt0_type | interrupt1_type;
-
 	if (interrupt_type & RAWCHIP_INT_TYPE_ERROR) {
 		rawchipCtrl->total_error_interrupt_times++;
 		if (rawchipCtrl->total_error_interrupt_times <= 10 || rawchipCtrl->total_error_interrupt_times % 1000 == 0) {
 			Yushan_Status_Snapshot();
-			if (!(interrupt_type & RAWCHIP_INT_TYPE_DXO_IP_ERROR))
-				Yushan_dump_Dxo();
+			Yushan_dump_Dxo();
 		}
 	}
 	se.type = 10;
@@ -545,9 +543,9 @@ int rawchip_power_up(const struct msm_camera_rawchip_info *pdata)
 	}
 
 #ifdef CONFIG_RAWCHIP_MCLK
-	rc = msm_camio_clk_enable(CAMIO_CAM_RAWCHIP_MCLK_CLK);
+	rc = msm_camio_clk_enable(0,CAMIO_CAM_RAWCHIP_MCLK_CLK);
 #else
-	rc = msm_camio_clk_enable(CAMIO_CAM_MCLK_CLK);
+	rc = msm_camio_clk_enable(0,CAMIO_CAM_MCLK_CLK);
 #endif
 
 	if (rc < 0) {
@@ -572,9 +570,9 @@ int rawchip_power_up(const struct msm_camera_rawchip_info *pdata)
 
 enable_reset_failed:
 #ifdef CONFIG_RAWCHIP_MCLK
-	rc = msm_camio_clk_disable(CAMIO_CAM_RAWCHIP_MCLK_CLK);
+	rc = msm_camio_clk_disable(0,CAMIO_CAM_RAWCHIP_MCLK_CLK);
 #else
-	rc = msm_camio_clk_disable(CAMIO_CAM_MCLK_CLK);
+	rc = msm_camio_clk_disable(0,CAMIO_CAM_MCLK_CLK);
 #endif
 
 enable_mclk_failed:
@@ -600,9 +598,9 @@ int rawchip_power_down(const struct msm_camera_rawchip_info *pdata)
 	mdelay(1);
 
 #ifdef CONFIG_RAWCHIP_MCLK
-	rc = msm_camio_clk_disable(CAMIO_CAM_RAWCHIP_MCLK_CLK);
+	rc = msm_camio_clk_disable(0,CAMIO_CAM_RAWCHIP_MCLK_CLK);
 #else
-	rc = msm_camio_clk_disable(CAMIO_CAM_MCLK_CLK);
+	rc = msm_camio_clk_disable(0,CAMIO_CAM_MCLK_CLK);
 #endif
 
 	if (rc < 0)
